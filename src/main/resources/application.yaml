@@ -16,6 +16,35 @@ hazelcast:
     name: myMap
     backup-count: 1
     time-to-live-seconds: 3600
+    # GC-optimized memory management
+    max-size:
+      policy: USED_HEAP_PERCENTAGE
+      value: 60  # Limit heap usage to 60% for GC efficiency
+    eviction:
+      policy: LRU
+      max-size-check-interval-seconds: 60
+    # Memory format optimization for GC
+    in-memory-format: BINARY  # Default, most GC-friendly
+  # Network optimization for reduced GC pressure
+  network:
+    port-auto-increment: true
+    port-count: 100
+    join:
+      multicast:
+        enabled: true
+      tcp-ip:
+        enabled: false
+  # Management and monitoring
+  management-center:
+    enabled: false
+  # Advanced memory management
+  serialization:
+    portable-version: 0
+    use-native-byte-order: false
+    byte-order: BIG_ENDIAN
+    enable-compression: true
+    enable-shared-object: true
+    allow-unsafe: false
 
 # Actuator endpoints configuration - separate port to avoid security conflicts
 management:

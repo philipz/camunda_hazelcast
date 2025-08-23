@@ -1,0 +1,87 @@
+# GC Monitoring Configuration Template
+# This file provides Prometheus alerting rules and Grafana dashboard configuration
+# for monitoring GC performance in Hazelcast + Camunda applications
+
+# Prometheus Alert Rules
+# Add to your prometheus.yml or alerts.yml file
+alerts:
+  groups:
+    - name: jvm-gc-alerts
+      rules:
+        - alert: HighGCPauseTime
+          expr: jvm_gc_pause_seconds{quantile="0.99"} > 0.1
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High GC pause time detected"
+            description: "GC pause time 99th percentile is {{ $value }}s, exceeding 100ms threshold"
+        
+        - alert: HighHeapUsage
+          expr: (jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"}) > 0.8
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "High heap memory usage"
+            description: "Heap memory usage is {{ $value | humanizePercentage }} of maximum"
+        
+        - alert: FrequentGCCollections
+          expr: rate(jvm_gc_collection_seconds_count[5m]) > 2
+          for: 3m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Frequent GC collections detected"
+            description: "GC collection rate is {{ $value }} collections per second"
+        
+        - alert: LowGCThroughput
+          expr: (rate(jvm_gc_collection_seconds_sum[5m]) / rate(jvm_gc_collection_seconds_count[5m])) / 
+                (rate(jvm_memory_used_bytes[5m]) / 1024/1024/1024) > 0.1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Low GC throughput detected"
+            description: "GC throughput ratio is {{ $value }}, indicating inefficient garbage collection"
+
+# Grafana Dashboard JSON snippet for GC monitoring
+# Import this as a new dashboard panel
+grafana_panels:
+  - title: "GC Pause Times"
+    type: "graph"
+    targets:
+      - expr: 'jvm_gc_pause_seconds{quantile=~"0.5|0.95|0.99"}'
+        legendFormat: '{{ quantile }}th percentile'
+    yAxes:
+      - label: "Seconds"
+        min: 0
+        max: 0.2
+    alert:
+      conditions:
+        - query: A
+          reducer:
+            type: max
+          evaluator:
+            params: [0.1]
+            type: gt
+  
+  - title: "Heap Memory Usage"
+    type: "singlestat"
+    targets:
+      - expr: '(jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"}) * 100'
+        legendFormat: 'Heap Usage %'
+    valueMaps:
+      - value: 'null'
+        text: 'N/A'
+    thresholds: "70,85"
+    colors: ["green", "yellow", "red"]
+  
+  - title: "GC Collection Rate"
+    type: "graph"
+    targets:
+      - expr: 'rate(jvm_gc_collection_seconds_count[5m])'
+        legendFormat: '{{ gc }} collections/sec'
+    yAxes:
+      - label: "Collections per second"
+        min: 0
