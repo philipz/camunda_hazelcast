@@ -1,0 +1,39 @@
+services:
+  postgresql:
+    image: postgres:17-alpine
+    ports:
+      - 5432:5432
+    #volumes:
+    #  - workflow-postgresql-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=camunda
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U $${POSTGRES_USER}
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - proxy
+
+  camunda:
+    image: philipz/camunda_hazelcast:7.23.0 
+    depends_on:
+      - postgresql
+    networks:
+      - proxy
+
+  webproxy:
+    depends_on:
+      - camunda
+    build: webproxy
+    networks:
+      - proxy
+    ports:
+      - "8080:80"
+
+networks:
+  proxy:

@@ -1,28 +1,55 @@
 package com.example.workflow.tasks;
 
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.camunda.bpm.engine.delegate.JavaDelegate;
 import org.camunda.bpm.engine.delegate.DelegateExecution;
 import org.camunda.bpm.engine.delegate.BpmnError;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.net.URI;
-import java.time.Duration;
+import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.map.IMap;
 
 @Component("getServiceDelegate")
 public class getServiceDelegate implements JavaDelegate {
     
     private static final Logger logger = LoggerFactory.getLogger(getServiceDelegate.class);
     
+    @Autowired
+    private HazelcastInstance hazelcastInstance;
+    
     @Override
     public void execute(DelegateExecution execution) throws Exception {
         String activityId = execution.getCurrentActivityId();
         
-        // 設計儲存Hazelcast的變數
-        IMap<String, Object> map = hazelcastInstance.getMap("myMap");
-        logger.info("value: " + map.get("key"));
+        try {
+            // Retrieve workflow data from Hazelcast
+            IMap<String, Object> map = hazelcastInstance.getMap("myMap");
+            
+            // Try to get the key from process variables (set by putServiceDelegate)
+            String key = (String) execution.getVariable("hazelcast_key");
+            
+            if (key == null) {
+                // Fallback: construct key from process instance and activity
+                String processInstanceId = execution.getProcessInstanceId();
+                key = processInstanceId + "_" + activityId;
+                logger.warn("No hazelcast_key variable found, using fallback key: {}", key);
+            }
+            
+            Object value = map.get(key);
+            
+            if (value != null) {
+                logger.info("Retrieved data from Hazelcast: key={}, value={}", key, value);
+                // Store retrieved value as process variable for use by subsequent tasks
+                execution.setVariable("retrieved_data", value);
+            } else {
+                logger.warn("No data found in Hazelcast for key: {}", key);
+                execution.setVariable("retrieved_data", null);
+            }
+            
+        } catch (Exception e) {
+            logger.error("Error retrieving data from Hazelcast", e);
+            throw new BpmnError("HAZELCAST_GET_ERROR", "Failed to retrieve data from Hazelcast: " + e.getMessage());
+        }
     }
 }

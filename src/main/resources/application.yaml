@@ -1,5 +1,44 @@
-spring.datasource.url: jdbc:h2:file:./camunda-h2-database
+spring:
+  datasource:
+    url: jdbc:postgresql://postgresql:5432/camunda
+    username: postgres
+    password: password
+    driver-class-name: org.postgresql.Driver
 
 camunda.bpm.admin-user:
   id: demo
   password: demo
+
+hazelcast:
+  enabled: true
+  instance-name: camunda-hazelcast
+  map:
+    name: myMap
+    backup-count: 1
+    time-to-live-seconds: 3600
+
+# Actuator endpoints configuration - separate port to avoid security conflicts
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+      base-path: /actuator
+  server:
+    port: 9000
+
+# Health check configuration for Kubernetes probes
+# Liveness and Readiness probe configuration
+  endpoint:
+    health:
+      probes:
+        enabled: true
+        add-additional-paths: true
+      show-details: always
+      show-components: always
+      livenessstate:
+        enabled: true
+      readinessstate:
+        enabled: true
+  prometheus:
+    access: unrestricted
