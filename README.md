@@ -184,6 +184,9 @@ mvn package
 
 # Clean
 mvn clean
+
+# Local run with "dev" profile
+mvn spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
 ### Testing
