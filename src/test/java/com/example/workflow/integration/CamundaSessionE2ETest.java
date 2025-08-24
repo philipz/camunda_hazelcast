@@ -47,6 +47,28 @@ public class CamundaSessionE2ETest {
         sessionMap.clear();
     }
 
+    /**
+     * Wait for session to appear in Hazelcast map
+     * @param initialCount Expected minimum session count
+     * @param timeoutMs Maximum wait time in milliseconds
+     * @return true if condition is met within timeout
+     */
+    private boolean waitForSessionInMap(int initialCount, long timeoutMs) {
+        long startTime = System.currentTimeMillis();
+        while (System.currentTimeMillis() - startTime < timeoutMs) {
+            if (sessionMap.size() >= initialCount) {
+                return true;
+            }
+            try {
+                Thread.sleep(50); // Check every 50ms
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return sessionMap.size() >= initialCount;
+    }
+
     @Test
     public void testCamundaApplicationStartup() {
         // Test that the application starts up correctly with session integration
@@ -72,11 +94,13 @@ public class CamundaSessionE2ETest {
                   "Should be able to access Camunda web interface (got: " + response.getStatusCode() + ")");
         
         // If it's a redirect, check if it's redirecting to login
-        if (response.getStatusCode().is3xxRedirection() && 
-            response.getHeaders().getLocation() != null) {
-            String location = response.getHeaders().getLocation().toString();
-            assertTrue(location.contains("login") || location.contains("auth"),
-                      "Should redirect to authentication page");
+        if (response.getStatusCode().is3xxRedirection()) {
+            var locationHeader = response.getHeaders().getLocation();
+            if (locationHeader != null) {
+                String location = locationHeader.toString();
+                assertTrue(location.contains("login") || location.contains("auth"),
+                          "Should redirect to authentication page");
+            }
         }
     }
 
@@ -99,14 +123,9 @@ public class CamundaSessionE2ETest {
             
             if (sessionCookieFound) {
                 // If a session cookie was set, verify it's in Hazelcast
-                // Note: There might be a slight delay for the session to appear in the map
-                try {
-                    Thread.sleep(100); // Small delay for session persistence
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-                
-                assertTrue(sessionMap.size() >= initialSessionCount,
+                // Use retry logic instead of fixed delay
+                boolean sessionStored = waitForSessionInMap(initialSessionCount, 1000);
+                assertTrue(sessionStored,
                           "Session should be stored in Hazelcast after web request");
             }
         }

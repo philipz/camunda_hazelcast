@@ -4,6 +4,8 @@ import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.map.IMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.session.Session;
@@ -19,6 +21,8 @@ import static org.junit.jupiter.api.Assertions.*;
 @ActiveProfiles("test")
 public class SessionIntegrationTest {
 
+    private static final Logger logger = LoggerFactory.getLogger(SessionIntegrationTest.class);
+
     @Autowired
     private SessionRepository<Session> sessionRepository;
 
@@ -31,6 +35,17 @@ public class SessionIntegrationTest {
     public void setUp() {
         sessionMap = hazelcastInstance.getMap("spring-session-sessions");
         assertNotNull(sessionMap, "Session map should be available");
+        
+        // Defensive cleanup with verification
+        try {
+            sessionMap.clear();
+            // Verify cleanup succeeded
+            assertEquals(0, sessionMap.size(), "Session map should be clean after setup");
+            logger.debug("Session map cleaned successfully for test setup");
+        } catch (Exception e) {
+            logger.warn("Failed to clean session map during setup: {}", e.getMessage());
+            // Still proceed with test but log the issue
+        }
     }
 
     @Test
@@ -44,8 +59,7 @@ public class SessionIntegrationTest {
 
     @Test
     public void testSessionLifecycle() {
-        // Clean up any existing sessions
-        sessionMap.clear();
+        // Session map already cleaned in setUp method
         
         // Create a new session
         Session session = sessionRepository.createSession();

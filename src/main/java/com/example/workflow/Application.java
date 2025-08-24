@@ -11,6 +11,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.event.EventListener;
 import org.springframework.session.SessionRepository;
+import com.hazelcast.core.HazelcastException;
 
 @SpringBootApplication
 public class Application {
@@ -37,8 +38,10 @@ public class Application {
       } else {
         logger.warn("⚠️ Hazelcast instance is not running properly");
       }
+    } catch (HazelcastException e) {
+      logger.error("❌ Hazelcast error: {}", e.getMessage());
     } catch (Exception e) {
-      logger.error("❌ Error checking Hazelcast status: {}", e.getMessage());
+      logger.error("❌ Unexpected error checking Hazelcast status: {}", e.getMessage(), e);
     }
     
     try {

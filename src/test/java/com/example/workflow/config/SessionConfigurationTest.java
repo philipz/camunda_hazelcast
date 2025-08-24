@@ -10,6 +10,8 @@ import org.springframework.session.hazelcast.HazelcastIndexedSessionRepository;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
+import java.time.Duration;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
@@ -96,12 +98,12 @@ public class SessionConfigurationTest {
         assertNotNull(session, "Should be able to create session");
         
         // Test that session has a reasonable max inactive interval (30 minutes = 1800 seconds)
-        int maxInactiveInterval = session.getMaxInactiveInterval().toSecondsPart() + 
-                                 session.getMaxInactiveInterval().toMinutesPart() * 60;
+        Duration timeout = session.getMaxInactiveInterval();
+        long seconds = timeout.toSeconds();
         
-        assertTrue(maxInactiveInterval > 0, "Session should have positive timeout");
+        assertTrue(seconds > 0, "Session should have positive timeout");
         // Default Spring Session timeout is typically 30 minutes (1800 seconds)
-        assertTrue(maxInactiveInterval >= 1800, "Session timeout should be at least 30 minutes");
+        assertTrue(seconds >= 1800, "Session timeout should be at least 30 minutes (got " + seconds + " seconds)");
         
         // Clean up
         typedRepository.deleteById(session.getId());
