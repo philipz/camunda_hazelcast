@@ -47,7 +47,7 @@ public class HazelcastProperties {
     public static class Map {
         private String name = "myMap";
         private int backupCount = 1;
-        private int timeToLiveSeconds = 3600;
+        private int timeToLiveSeconds = 0; // 0 = no expiration
         
         public String getName() {
             return name;

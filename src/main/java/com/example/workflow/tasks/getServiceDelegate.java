@@ -27,14 +27,7 @@ public class getServiceDelegate implements JavaDelegate {
             IMap<String, Object> map = hazelcastInstance.getMap("myMap");
             
             // Try to get the key from process variables (set by putServiceDelegate)
-            String key = (String) execution.getVariable("hazelcast_key");
-            
-            if (key == null) {
-                // Fallback: construct key from process instance and activity
-                String processInstanceId = execution.getProcessInstanceId();
-                key = processInstanceId + "_" + activityId;
-                logger.warn("No hazelcast_key variable found, using fallback key: {}", key);
-            }
+            final String key = (String) execution.getVariable("hazelcast_key");
             
             Object value = map.get(key);
             
@@ -42,6 +35,17 @@ public class getServiceDelegate implements JavaDelegate {
                 logger.info("Retrieved data from Hazelcast: key={}, value={}", key, value);
                 // Store retrieved value as process variable for use by subsequent tasks
                 execution.setVariable("retrieved_data", value);
+                // 使用 deleteAsync 並處理非同步結果
+                map.deleteAsync(key).thenAccept(deleted -> {
+                    if (deleted) {
+                        logger.info("Successfully deleted key: {}", key);
+                    } else {
+                        logger.warn("Failed to delete key: {}", key);
+                    }
+                }).exceptionally(throwable -> {
+                    logger.error("Error deleting key: {}", key, throwable);
+                    return null;
+                });
             } else {
                 logger.warn("No data found in Hazelcast for key: {}", key);
                 execution.setVariable("retrieved_data", null);
