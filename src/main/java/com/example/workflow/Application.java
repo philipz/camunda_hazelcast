@@ -1,6 +1,7 @@
 package com.example.workflow;
 
 import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.map.IMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,6 +10,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.event.EventListener;
+import org.springframework.session.SessionRepository;
 
 @SpringBootApplication
 public class Application {
@@ -50,6 +52,30 @@ public class Application {
       
     } catch (Exception e) {
       logger.error("❌ Error checking service delegates: {}", e.getMessage());
+    }
+    
+    try {
+      // Verify Spring Session integration
+      SessionRepository<?> sessionRepository = applicationContext.getBean(SessionRepository.class);
+      if (sessionRepository != null) {
+        logger.info("✅ Spring Session repository is registered: {}", sessionRepository.getClass().getSimpleName());
+        
+        // Verify session map is configured in Hazelcast
+        HazelcastInstance hazelcastInstance = applicationContext.getBean(HazelcastInstance.class);
+        if (hazelcastInstance != null) {
+          IMap<String, Object> sessionMap = hazelcastInstance.getMap("spring-session-sessions");
+          if (sessionMap != null) {
+            logger.info("✅ Spring Session Hazelcast map 'spring-session-sessions' is configured");
+            logger.info("  - Current sessions in map: {}", sessionMap.size());
+          } else {
+            logger.warn("⚠️ Spring Session map 'spring-session-sessions' not found in Hazelcast");
+          }
+        }
+      } else {
+        logger.warn("⚠️ Spring Session repository is not registered");
+      }
+    } catch (Exception e) {
+      logger.error("❌ Error checking Spring Session status: {}", e.getMessage());
     }
     
     logger.info("=== Integration check complete ===");
