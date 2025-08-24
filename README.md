@@ -1,16 +1,22 @@
 # Camunda BPM Hazelcast Integration
 
-This project demonstrates the integration of Camunda BPM with Hazelcast In-Memory Data Grid (IMDG) for distributed workflow variable storage and retrieval.
+This project demonstrates the integration of Camunda BPM with Hazelcast In-Memory Data Grid (IMDG) for distributed workflow variable storage, retrieval, and session management.
 
 ## Overview
 
-The project showcases how to use Hazelcast as a distributed cache for storing and retrieving workflow variables in Camunda BPM processes. It includes service delegates that interact with Hazelcast maps to store and retrieve data across process instances.
+The project showcases how to use Hazelcast as a distributed cache for:
+- Storing and retrieving workflow variables in Camunda BPM processes
+- Distributed session management with Spring Session
+- Horizontal scaling and session persistence across application restarts
+
+It includes service delegates that interact with Hazelcast maps and Spring Session configuration for distributed session storage.
 
 ## Technology Stack
 
 - **Camunda BPM 7.23.0** - Workflow engine
 - **Hazelcast 5.5.0** - In-Memory Data Grid
 - **Spring Boot 3.4.4** - Application framework
+- **Spring Session** - Distributed session management
 - **PostgreSQL 17** - Production database
 - **H2 Database** - Testing database
 - **Docker & Docker Compose** - Containerization
@@ -22,10 +28,12 @@ The project showcases how to use Hazelcast as a distributed cache for storing an
 ### Core Components
 
 - **HazelcastAutoConfiguration**: Auto-configures Hazelcast instance with Spring Boot
+- **SessionConfig**: Spring Session configuration for Hazelcast-based session storage
 - **putServiceDelegate**: Service delegate for storing data to Hazelcast maps
 - **getServiceDelegate**: Service delegate for retrieving data from Hazelcast maps
 - **HazelcastHealthIndicator**: Health check endpoint for Hazelcast status
-- **Integration Tests**: Comprehensive test suite for Hazelcast integration
+- **HazelcastProperties**: Configuration properties for Hazelcast and session settings
+- **Integration Tests**: Comprehensive test suite for Hazelcast and session integration
 
 ### Service Delegates
 
@@ -38,6 +46,24 @@ The project showcases how to use Hazelcast as a distributed cache for storing an
 - Retrieves workflow variables from Hazelcast distributed maps
 - Returns data back to process context
 - Handles missing keys gracefully
+
+### Session Management
+
+The application includes Spring Session integration with Hazelcast for distributed session management:
+
+#### Features
+- **Horizontal Scaling**: Sessions are shared across multiple application instances
+- **Session Persistence**: Sessions survive application restarts
+- **Secure Configuration**: HTTP-only, secure cookies with CSRF protection
+- **Configurable Timeouts**: Environment-specific session timeout settings
+
+#### Session Configuration
+Sessions are stored in Hazelcast using the `spring-session-sessions` map with configurable properties for different environments (development, production, test).
+
+#### Benefits for Camunda
+- User authentication state preserved across server restarts
+- Load balancing support for multiple Camunda instances
+- Improved user experience with persistent login sessions
 
 ## Quick Start
 
@@ -154,6 +180,22 @@ hazelcast:
     name: myMap
     backup-count: 1
     time-to-live-seconds: 3600
+
+spring:
+  session:
+    store-type: hazelcast
+    hazelcast:
+      map-name: "spring-session-sessions"
+      flush-mode: on-save
+      save-mode: on-set-attribute
+    timeout: 30m
+  servlet:
+    session:
+      cookie:
+        name: "CAMUNDA_SESSION"
+        secure: true
+        http-only: true
+        same-site: lax
 ```
 
 ### Test Configuration (`application-test.yaml`)
@@ -198,6 +240,21 @@ The project includes comprehensive integration tests:
   - Data storage and retrieval
   - Process instance data isolation
   - Map configuration verification
+
+- **SessionConfigurationTest**: Tests Spring Session configuration
+  - SessionRepository bean registration
+  - Session timeout and cookie configuration
+  - Hazelcast session map integration
+
+- **SessionIntegrationTest**: Tests complete session lifecycle
+  - Session creation, storage, and retrieval
+  - Session sharing between instances
+  - Session persistence across restarts
+
+- **CamundaSessionE2ETest**: End-to-end session testing
+  - Camunda authentication integration
+  - Web interface session management
+  - Multi-user session isolation
 
 Run specific tests:
 ```bash

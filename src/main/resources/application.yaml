@@ -4,6 +4,22 @@ spring:
     username: postgres
     password: password
     driver-class-name: org.postgresql.Driver
+  
+  # Spring Session configuration for distributed session management
+  session:
+    store-type: hazelcast
+    hazelcast:
+      map-name: "spring-session-sessions"
+      flush-mode: on-save
+      save-mode: on-set-attribute
+    timeout: 30m
+  servlet:
+    session:
+      cookie:
+        name: "CAMUNDA_SESSION"
+        secure: true
+        http-only: true
+        same-site: lax
 
 camunda.bpm.admin-user:
   id: demo

@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: jdbc:h2:mem:testdb;MODE=MySQL;DATABASE_TO_LOWER=TRUE;INIT=CREATE SCHEMA IF NOT EXISTS PUBLIC
+    url: jdbc:h2:mem:testdb-${random.uuid};MODE=MySQL;DATABASE_TO_LOWER=TRUE;INIT=CREATE SCHEMA IF NOT EXISTS PUBLIC
     username: sa
     password: 
     driver-class-name: org.h2.Driver
@@ -18,7 +18,7 @@ camunda:
 
 hazelcast:
   enabled: true
-  instance-name: camunda-hazelcast
+  instance-name: camunda-hazelcast-${random.uuid}
   map:
     name: myMap
     backup-count: 1
