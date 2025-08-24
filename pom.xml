@@ -12,6 +12,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.source>21</maven.compiler.source>
     <maven.compiler.target>21</maven.compiler.target>
+    <hazelcast.version>5.5.0</hazelcast.version>
   </properties>
 
   <dependencyManagement>
@@ -69,11 +70,18 @@
     <dependency>
       <groupId>com.hazelcast</groupId>
       <artifactId>hazelcast-spring</artifactId>
+      <version>${hazelcast.version}</version>
     </dependency>
 
     <dependency>
       <groupId>com.hazelcast</groupId>
       <artifactId>hazelcast</artifactId>
+      <version>${hazelcast.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.session</groupId>
+      <artifactId>spring-session-hazelcast</artifactId>
     </dependency>
 
     <dependency>

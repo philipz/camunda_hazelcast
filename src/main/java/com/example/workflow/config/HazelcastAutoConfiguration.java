@@ -22,18 +22,33 @@ public class HazelcastAutoConfiguration {
         config.setInstanceName(hazelcastProperties.getInstanceName());
         
         // Configure the map for workflow data storage
-        MapConfig mapConfig = new MapConfig();
-        mapConfig.setName(hazelcastProperties.getMap().getName());
-        mapConfig.setBackupCount(hazelcastProperties.getMap().getBackupCount());
-        mapConfig.setTimeToLiveSeconds(hazelcastProperties.getMap().getTimeToLiveSeconds());
+        configureWorkflowMap(config);
         
-        config.addMapConfig(mapConfig);
-        
-        // Disable multicast for embedded usage
-        config.getNetworkConfig().getJoin().getMulticastConfig().setEnabled(false);
-        config.getNetworkConfig().getJoin().getTcpIpConfig().setEnabled(false);
+        // Configure the map for session storage
+        configureSessionMap(config);
         
         return config;
+    }
+    
+    private void configureWorkflowMap(Config config) {
+        MapConfig workflowMapConfig = new MapConfig();
+        workflowMapConfig.setName(hazelcastProperties.getMap().getName());
+        workflowMapConfig.setBackupCount(hazelcastProperties.getMap().getBackupCount());
+        workflowMapConfig.setTimeToLiveSeconds(hazelcastProperties.getMap().getTimeToLiveSeconds());
+        config.addMapConfig(workflowMapConfig);
+    }
+    
+    private void configureSessionMap(Config config) {
+        MapConfig sessionMapConfig = new MapConfig();
+        sessionMapConfig.setName(hazelcastProperties.getSession().getMapName());
+        sessionMapConfig.setBackupCount(1); // At least one backup for session reliability
+        sessionMapConfig.setTimeToLiveSeconds(
+            hazelcastProperties.getSession().getMaxInactiveIntervalMinutes() * 60 + 300 // Add 5 minutes buffer
+        );
+        sessionMapConfig.setMaxIdleSeconds(
+            hazelcastProperties.getSession().getMaxInactiveIntervalMinutes() * 60
+        );
+        config.addMapConfig(sessionMapConfig);
     }
     
     @Bean
