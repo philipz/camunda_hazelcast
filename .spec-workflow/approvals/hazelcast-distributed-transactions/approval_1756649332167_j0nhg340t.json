@@ -1,0 +1,27 @@
+{
+  "id": "approval_1756649332167_j0nhg340t",
+  "title": "Tasks Document: Hazelcast Distributed Transactions",
+  "filePath": ".spec-workflow/specs/hazelcast-distributed-transactions/tasks.md",
+  "type": "document",
+  "status": "needs-revision",
+  "createdAt": "2025-08-31T14:08:52.167Z",
+  "category": "spec",
+  "categoryName": "hazelcast-distributed-transactions",
+  "response": "Feedback Summary (1 comments):\n\nSpecific Text Comments:\n1. \"- [ ] 12. Add BPMN process for transaction demonst...\": 直接使用parallelprocess.bpmn，不用建立新的bpmn流程和檔案\n",
+  "annotations": "{\n  \"decision\": \"needs-revision\",\n  \"comments\": [\n    {\n      \"type\": \"selection\",\n      \"comment\": \"直接使用parallelprocess.bpmn，不用建立新的bpmn流程和檔案\",\n      \"timestamp\": \"2025-08-31T14:11:22.459Z\",\n      \"selectedText\": \"- [ ] 12. Add BPMN process for transaction demonstration\\n  - File: src/main/resources/transaction-demo-process.bpmn\\n  - Create process with multiple RestServiceDelegate tasks in transaction scope\\n  - Include happy path and failure scenario paths\\n  - Add boundary events for timeout and error handling\\n  - Purpose: Demonstrate distributed transaction capabilities in real workflow\\n  - _Leverage: existing BPMN process patterns from process.bpmn_\\n  - _Requirements: 1.1, 2.1, 6.1_\",\n      \"highlightColor\": {\n        \"bg\": \"rgba(255, 235, 59, 0.3)\",\n        \"border\": \"#FFEB3B\",\n        \"name\": \"#ffeb3b\"\n      },\n      \"id\": \"comment_1756649482460_pqunraqmm\"\n    }\n  ],\n  \"summary\": \"Feedback Summary (1 comments):\\n\\nSpecific Text Comments:\\n1. \\\"- [ ] 12. Add BPMN process for transaction demonst...\\\": 直接使用parallelprocess.bpmn，不用建立新的bpmn流程和檔案\\n\",\n  \"timestamp\": \"2025-08-31T14:11:27.620Z\"\n}",
+  "respondedAt": "2025-08-31T14:11:27.677Z",
+  "comments": [
+    {
+      "type": "selection",
+      "comment": "直接使用parallelprocess.bpmn，不用建立新的bpmn流程和檔案",
+      "timestamp": "2025-08-31T14:11:22.459Z",
+      "selectedText": "- [ ] 12. Add BPMN process for transaction demonstration\n  - File: src/main/resources/transaction-demo-process.bpmn\n  - Create process with multiple RestServiceDelegate tasks in transaction scope\n  - Include happy path and failure scenario paths\n  - Add boundary events for timeout and error handling\n  - Purpose: Demonstrate distributed transaction capabilities in real workflow\n  - _Leverage: existing BPMN process patterns from process.bpmn_\n  - _Requirements: 1.1, 2.1, 6.1_",
+      "highlightColor": {
+        "bg": "rgba(255, 235, 59, 0.3)",
+        "border": "#FFEB3B",
+        "name": "#ffeb3b"
+      },
+      "id": "comment_1756649482460_pqunraqmm"
+    }
+  ]
+}

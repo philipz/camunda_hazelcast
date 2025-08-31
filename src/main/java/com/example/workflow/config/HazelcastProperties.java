@@ -11,6 +11,7 @@ public class HazelcastProperties {
     private boolean enabled = true;
     private Map map = new Map();
     private Session session = new Session();
+    private Transaction transaction = new Transaction();
     
     public String getInstanceName() {
         return instanceName;
@@ -42,6 +43,14 @@ public class HazelcastProperties {
     
     public void setSession(Session session) {
         this.session = session;
+    }
+    
+    public Transaction getTransaction() {
+        return transaction;
+    }
+    
+    public void setTransaction(Transaction transaction) {
+        this.transaction = transaction;
     }
     
     public static class Map {
@@ -120,5 +129,58 @@ public class HazelcastProperties {
         public void setCookieHttpOnly(boolean cookieHttpOnly) {
             this.cookieHttpOnly = cookieHttpOnly;
         }
+    }
+    
+    public static class Transaction {
+        private long timeoutSeconds = 30L;
+        private TransactionType type = TransactionType.TWO_PHASE;
+        private String isolation = "READ_COMMITTED";
+        private int retryCount = 3;
+        private boolean enableXA = false;
+        
+        public long getTimeoutSeconds() {
+            return timeoutSeconds;
+        }
+        
+        public void setTimeoutSeconds(long timeoutSeconds) {
+            this.timeoutSeconds = timeoutSeconds;
+        }
+        
+        public TransactionType getType() {
+            return type;
+        }
+        
+        public void setType(TransactionType type) {
+            this.type = type;
+        }
+        
+        public String getIsolation() {
+            return isolation;
+        }
+        
+        public void setIsolation(String isolation) {
+            this.isolation = isolation;
+        }
+        
+        public int getRetryCount() {
+            return retryCount;
+        }
+        
+        public void setRetryCount(int retryCount) {
+            this.retryCount = retryCount;
+        }
+        
+        public boolean isEnableXA() {
+            return enableXA;
+        }
+        
+        public void setEnableXA(boolean enableXA) {
+            this.enableXA = enableXA;
+        }
+    }
+    
+    public enum TransactionType {
+        TWO_PHASE,
+        ONE_PHASE
     }
 }
