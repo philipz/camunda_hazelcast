@@ -135,6 +135,7 @@ curl --location 'http://localhost:8080/engine-rest/process-definition/key/getpro
 --data '{
   "businessKey": "456",
   "variables": {
+      "hazelcast_map": {"value": "LOOK_FOR_MAP"}, //transaction-data or myMap
       "hazelcast_key": {"value": "LOOK_FOR_YOUR_CAMUNDA_CONSOLE"}
   }
 }'

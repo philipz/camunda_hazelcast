@@ -11,5 +11,9 @@ public enum TransactionType {
     /** XA (two-phase commit) transaction */
     XA,
     /** Saga pattern transaction */
-    SAGA
+    SAGA,
+    /** Two-phase commit transaction */
+    TWO_PHASE,
+    /** Single-phase commit transaction (for performance) */
+    ONE_PHASE
 }

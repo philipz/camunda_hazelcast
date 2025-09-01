@@ -4,6 +4,7 @@ import com.hazelcast.config.Config;
 import com.hazelcast.config.MapConfig;
 import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
+import com.example.workflow.transaction.HazelcastTransactionManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -26,6 +27,9 @@ public class HazelcastAutoConfiguration {
         
         // Configure the map for session storage
         configureSessionMap(config);
+        
+        // Configure transaction-specific maps
+        configureTransactionMaps(config);
         
         return config;
     }
@@ -54,5 +58,27 @@ public class HazelcastAutoConfiguration {
     @Bean
     public HazelcastInstance hazelcastInstance(Config hazelcastConfig) {
         return Hazelcast.newHazelcastInstance(hazelcastConfig);
+    }
+    
+    private void configureTransactionMaps(Config config) {
+        // Configure active transactions map
+        MapConfig activeTransactionsMapConfig = new MapConfig();
+        activeTransactionsMapConfig.setName("active-transactions");
+        activeTransactionsMapConfig.setBackupCount(1); // Ensure transaction metadata is backed up
+        activeTransactionsMapConfig.setTimeToLiveSeconds((int) hazelcastProperties.getTransaction().getTimeoutSeconds() * 2); // Cleanup stale transactions
+        config.addMapConfig(activeTransactionsMapConfig);
+        
+        // Configure transaction data map with stronger consistency
+        MapConfig transactionDataMapConfig = new MapConfig();
+        transactionDataMapConfig.setName("transaction-data");
+        transactionDataMapConfig.setBackupCount(hazelcastProperties.getMap().getBackupCount());
+        transactionDataMapConfig.setTimeToLiveSeconds(0); // No expiration for transaction data
+        config.addMapConfig(transactionDataMapConfig);
+    }
+    
+    @Bean
+    @ConditionalOnProperty(prefix = "hazelcast.transaction", name = "enabled", havingValue = "true", matchIfMissing = true)
+    public HazelcastTransactionManager hazelcastTransactionManager(HazelcastInstance hazelcastInstance) {
+        return new HazelcastTransactionManager(hazelcastInstance);
     }
 }

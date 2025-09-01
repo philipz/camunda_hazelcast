@@ -41,6 +41,34 @@ hazelcast:
       max-size-check-interval-seconds: 60
     # Memory format optimization for GC
     in-memory-format: BINARY  # Default, most GC-friendly
+  
+  # Session configuration
+  session:
+    map-name: "spring-session-sessions"
+    max-inactive-interval-minutes: 30
+    cookie-name: "CAMUNDA_SESSION"
+    cookie-secure: true
+    cookie-http-only: true
+  
+  # Distributed Transaction Configuration
+  transaction:
+    enabled: true
+    timeout-seconds: 30
+    type: TWO_PHASE  # Options: TWO_PHASE, ONE_PHASE
+    isolation: READ_COMMITTED  # Options: READ_UNCOMMITTED, READ_COMMITTED, REPEATABLE_READ, SERIALIZABLE
+    retry-count: 3
+    enable-xa: false
+    # Deadlock detection settings
+    deadlock-detection:
+      enabled: true
+      timeout-seconds: 10
+      retry-backoff-multiplier: 1.5
+      max-retry-delay-seconds: 5
+    # Transaction monitoring and metrics
+    monitoring:
+      enabled: true
+      log-transaction-details: false
+      track-performance-metrics: true
   # Network optimization for reduced GC pressure
   network:
     port-auto-increment: true

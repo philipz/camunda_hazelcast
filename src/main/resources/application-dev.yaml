@@ -11,20 +11,46 @@ camunda.bpm.admin-user:
 
 hazelcast:
   enabled: true
-  instance-name: camunda-hazelcast
+  instance-name: camunda-hazelcast-dev
   map:
-    name: myMap
-    backup-count: 1
-    time-to-live-seconds: 3600
+    name: myMap-dev
+    backup-count: 0  # No backup in dev mode for performance
+    time-to-live-seconds: 1800  # Shorter TTL in dev
     # GC-optimized memory management
     max-size:
       policy: USED_HEAP_PERCENTAGE
-      value: 60  # Limit heap usage to 60% for GC efficiency
+      value: 40  # Lower memory usage in dev
     eviction:
       policy: LRU
-      max-size-check-interval-seconds: 60
+      max-size-check-interval-seconds: 30
     # Memory format optimization for GC
-    in-memory-format: BINARY  # Default, most GC-friendly
+    in-memory-format: BINARY
+  
+  # Session configuration for dev
+  session:
+    map-name: "spring-session-sessions-dev"
+    max-inactive-interval-minutes: 15  # Shorter session in dev
+    cookie-name: "CAMUNDA_SESSION_DEV"
+    cookie-secure: false  # HTTP allowed in dev
+    cookie-http-only: true
+  
+  # Development Transaction Configuration
+  transaction:
+    enabled: true
+    timeout-seconds: 60  # Longer timeout for debugging
+    type: TWO_PHASE
+    isolation: READ_COMMITTED
+    retry-count: 5  # More retries for dev testing
+    enable-xa: false
+    deadlock-detection:
+      enabled: true
+      timeout-seconds: 20  # Longer deadlock timeout for debugging
+      retry-backoff-multiplier: 2.0
+      max-retry-delay-seconds: 10
+    monitoring:
+      enabled: true
+      log-transaction-details: true  # Verbose logging in dev
+      track-performance-metrics: true
   # Network optimization for reduced GC pressure
   network:
     port-auto-increment: true
@@ -71,3 +97,11 @@ management:
         enabled: true
   prometheus:
     access: unrestricted
+
+# Logging configuration for debugging
+logging:
+  level:
+    com.example.workflow: DEBUG
+    com.hazelcast: DEBUG
+    org.springframework.transaction: DEBUG
+    org.springframework.session: DEBUG

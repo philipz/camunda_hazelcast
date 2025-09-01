@@ -17,4 +17,17 @@ public record TransactionOptions(
     TransactionIsolation isolation,
     int retryCount,
     boolean enableXA
-) {}
+) {
+    /**
+     * Create default transaction options.
+     */
+    public static TransactionOptions defaultOptions() {
+        return new TransactionOptions(
+            TransactionType.TWO_PHASE,
+            Duration.ofSeconds(30),
+            TransactionIsolation.REPEATABLE_READ,
+            3,
+            false
+        );
+    }
+}

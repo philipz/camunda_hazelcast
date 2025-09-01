@@ -6,13 +6,14 @@ import com.hazelcast.transaction.TransactionContext;
 import com.hazelcast.transaction.TransactionOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -37,6 +38,9 @@ public class HazelcastTransactionManager {
     private final IMap<String, com.example.workflow.transaction.TransactionContext> activeTransactions;
     private final Map<String, TransactionContext> hazelcastTransactionContexts;
     private final ScheduledExecutorService timeoutExecutor;
+    
+    @Autowired(required = false)
+    private TransactionMonitor transactionMonitor;
     
     public HazelcastTransactionManager(HazelcastInstance hazelcastInstance) {
         this.hazelcastInstance = hazelcastInstance;
@@ -91,12 +95,25 @@ public class HazelcastTransactionManager {
             // Schedule timeout handling
             scheduleTimeout(transactionId, options.timeout());
             
+            // Record monitoring event
+            if (transactionMonitor != null) {
+                transactionMonitor.recordTransactionStarted(transactionId, processInstanceId, 
+                                                         options.type(), participants);
+            }
+            
             logger.info("Transaction {} successfully started", transactionId);
             return transactionContext;
             
         } catch (Exception e) {
             logger.error("Failed to begin transaction {} for process {}", 
                         transactionId, processInstanceId, e);
+            
+            // Record failure in monitoring
+            if (transactionMonitor != null) {
+                Duration executionTime = Duration.ofMillis(System.currentTimeMillis() - System.currentTimeMillis());
+                transactionMonitor.recordTransactionFailed(transactionId, executionTime, e);
+            }
+            
             throw new TransactionException("Failed to begin transaction", e);
         }
     }
@@ -132,12 +149,19 @@ public class HazelcastTransactionManager {
             
             Duration executionTime = Duration.between(startTime, LocalDateTime.now());
             
+            // Record successful commit in monitoring
+            if (transactionMonitor != null) {
+                transactionMonitor.recordTransactionCommitted(transactionId, executionTime);
+            }
+            
             com.example.workflow.transaction.TransactionResult result = 
                 new com.example.workflow.transaction.TransactionResult(
+                    transactionId,
                     TransactionStatus.SUCCESS,
                     executionTime,
-                    Map.of("participants", context.participants()),
-                    null
+                    context.participants(),
+                    Optional.empty(),
+                    Map.of()
                 );
             
             logger.info("Transaction {} committed successfully in {}ms", 
@@ -147,6 +171,13 @@ public class HazelcastTransactionManager {
         } catch (Exception e) {
             logger.error("Failed to commit transaction {}", transactionId, e);
             
+            Duration executionTime = Duration.between(startTime, LocalDateTime.now());
+            
+            // Record failure in monitoring
+            if (transactionMonitor != null) {
+                transactionMonitor.recordTransactionFailed(transactionId, executionTime, e);
+            }
+            
             // Attempt rollback on commit failure
             try {
                 rollbackTransaction(transactionId);
@@ -155,12 +186,13 @@ public class HazelcastTransactionManager {
                            transactionId, rollbackException);
             }
             
-            Duration executionTime = Duration.between(startTime, LocalDateTime.now());
             return new com.example.workflow.transaction.TransactionResult(
+                transactionId,
                 TransactionStatus.FAILED,
                 executionTime,
-                Map.of(),
-                e.getMessage()
+                List.of(),
+                Optional.of(e),
+                Map.of()
             );
         }
     }
@@ -195,12 +227,19 @@ public class HazelcastTransactionManager {
             
             Duration executionTime = Duration.between(startTime, LocalDateTime.now());
             
+            // Record rollback in monitoring
+            if (transactionMonitor != null) {
+                transactionMonitor.recordTransactionRolledBack(transactionId, executionTime, "Manual rollback");
+            }
+            
             com.example.workflow.transaction.TransactionResult result = 
                 new com.example.workflow.transaction.TransactionResult(
+                    transactionId,
                     TransactionStatus.ROLLBACK,
                     executionTime,
-                    context != null ? Map.of("participants", context.participants()) : Map.of(),
-                    null
+                    context != null ? context.participants() : List.of(),
+                    Optional.empty(),
+                    Map.of()
                 );
             
             logger.info("Transaction {} rolled back successfully in {}ms", 
@@ -211,11 +250,19 @@ public class HazelcastTransactionManager {
             logger.error("Failed to rollback transaction {}", transactionId, e);
             
             Duration executionTime = Duration.between(startTime, LocalDateTime.now());
+            
+            // Record failure in monitoring
+            if (transactionMonitor != null) {
+                transactionMonitor.recordTransactionFailed(transactionId, executionTime, e);
+            }
+            
             return new com.example.workflow.transaction.TransactionResult(
+                transactionId,
                 TransactionStatus.FAILED,
                 executionTime,
-                Map.of(),
-                e.getMessage()
+                List.of(),
+                Optional.of(e),
+                Map.of()
             );
         }
     }
@@ -260,11 +307,27 @@ public class HazelcastTransactionManager {
     }
     
     /**
+     * Get the Hazelcast transaction context for service delegates.
+     * 
+     * @param transactionId The transaction ID
+     * @return Hazelcast TransactionContext or null if not found
+     */
+    public TransactionContext getHazelcastTransactionContext(String transactionId) {
+        return hazelcastTransactionContexts.get(transactionId);
+    }
+    
+    /**
      * Schedule timeout handling for a transaction.
      */
     private void scheduleTimeout(String transactionId, Duration timeout) {
         timeoutExecutor.schedule(() -> {
             logger.warn("Transaction {} timed out after {}", transactionId, timeout);
+            
+            // Record timeout in monitoring
+            if (transactionMonitor != null) {
+                transactionMonitor.recordTimeoutOccurred(transactionId, timeout, timeout);
+            }
+            
             try {
                 rollbackTransaction(transactionId);
             } catch (Exception e) {
@@ -291,6 +354,8 @@ public class HazelcastTransactionManager {
             case LOCAL -> com.hazelcast.transaction.TransactionOptions.TransactionType.TWO_PHASE;
             case XA, DISTRIBUTED -> com.hazelcast.transaction.TransactionOptions.TransactionType.TWO_PHASE;
             case SAGA -> com.hazelcast.transaction.TransactionOptions.TransactionType.TWO_PHASE;
+            case TWO_PHASE -> com.hazelcast.transaction.TransactionOptions.TransactionType.TWO_PHASE;
+            case ONE_PHASE -> com.hazelcast.transaction.TransactionOptions.TransactionType.ONE_PHASE;
         };
     }
     

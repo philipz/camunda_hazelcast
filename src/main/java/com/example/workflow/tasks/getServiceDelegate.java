@@ -23,8 +23,9 @@ public class getServiceDelegate implements JavaDelegate {
         String activityId = execution.getCurrentActivityId();
         
         try {
+            final String mapName = (String) execution.getVariable("hazelcast_map");
             // Retrieve workflow data from Hazelcast
-            IMap<String, Object> map = hazelcastInstance.getMap("myMap");
+            IMap<String, Object> map = hazelcastInstance.getMap(mapName);
             
             // Try to get the key from process variables (set by putServiceDelegate)
             final String key = (String) execution.getVariable("hazelcast_key");
