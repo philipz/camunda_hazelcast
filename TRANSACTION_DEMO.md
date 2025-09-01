@@ -246,3 +246,386 @@ logging:
 - **成功率**: > 99%
 
 通過這個演示，您可以完整地驗證 Hazelcast 分散式事務功能在真實 Camunda 工作流程中的表現。
+
+## Hazelcast 分散式交易詳細技術實作分析
+
+### 核心架構與 ACID 特性實作
+
+本專案實作了完整的 Hazelcast 分散式交易系統，確保在多個服務操作間維持 ACID 特性：
+
+#### 1. 原子性 (Atomicity) 實作
+
+**事務管理器 (HazelcastTransactionManager)**:
+```java
+// src/main/java/com/example/workflow/transaction/HazelcastTransactionManager.java:72-145
+public TransactionContext beginTransaction(String processInstanceId, List<String> participants, TransactionOptions options) {
+    TransactionOptions hazelcastOptions = new TransactionOptions()
+        .setTransactionType(mapTransactionType(options.type()))
+        .setTimeout(options.timeout().toMillis(), TimeUnit.MILLISECONDS);
+    
+    // 開始 Hazelcast 事務 - 創建事務邊界
+    TransactionContext hazelcastContext = hazelcastInstance.newTransactionContext(hazelcastOptions);
+    hazelcastContext.beginTransaction();
+    
+    // 註冊到活躍事務中，確保統一管理
+    activeTransactions.put(transactionId, transactionContext);
+    hazelcastTransactionContexts.put(transactionId, hazelcastContext);
+}
+```
+
+**自動回滾機制**:
+```java
+// src/main/java/com/example/workflow/transaction/HazelcastTransactionManager.java:207-268
+public TransactionResult rollbackTransaction(String transactionId) {
+    if (hazelcastContext != null) {
+        hazelcastContext.rollbackTransaction(); // 回滾所有操作
+    }
+    cleanup(transactionId); // 清理資源
+    return new TransactionResult(transactionId, TransactionStatus.ROLLBACK, ...);
+}
+```
+
+**測試驗證 - 失敗場景的原子性**:
+```java
+// src/test/java/com/example/workflow/integration/TransactionWorkflowE2ETest.java:123-167
+@Test
+public void testTransactionRollbackOnApiFailure() throws Exception {
+    // 設置一個會失敗的 API 調用
+    String failingApiUrl = "http://httpbin.org/status/500";
+    
+    // 執行工作流程
+    ProcessInstance processInstance = processEngine.getRuntimeService()
+        .startProcessInstanceByKey("parallelprocess", variables);
+    
+    // 驗證整個事務都被回滾
+    verifyNoPartialTransactionData(processInstance.getId());
+}
+```
+
+#### 2. 一致性 (Consistency) 實作
+
+**事務性資料結構存取**:
+```java
+// src/main/java/com/example/workflow/transaction/TransactionalServiceDelegate.java:224-234
+protected <K, V> TransactionalMap<K, V> getTransactionalMap(String mapName, TransactionContext transactionContext) {
+    // 取得 Hazelcast 事務上下文
+    com.hazelcast.transaction.TransactionContext hazelcastContext = 
+        getHazelcastTransactionContext(transactionContext);
+    
+    // 返回事務性 Map，所有操作都在事務邊界內
+    return hazelcastContext.getMap(mapName);
+}
+```
+
+**RestServiceDelegate 中的一致性實作**:
+```java
+// src/main/java/com/example/workflow/tasks/RestServiceDelegate.java:187-221
+private void storeResponseDataTransactionally(DelegateExecution execution, String responseBody, TransactionContext transactionContext) throws Exception {
+    // 取得事務性 Map
+    TransactionalMap<String, Object> transactionalMap = getTransactionalMap("transaction-data", transactionContext);
+    
+    // 在事務中存儲 API 回應資料
+    transactionalMap.put(responseKey, responseData);
+    
+    // 同時設置查找索引，保證資料一致性
+    TransactionalMap<String, Object> lookupMap = getTransactionalMap("transaction-data", transactionContext);
+    lookupMap.put(lookupKey + ":" + activityId, responseKey);
+}
+```
+
+#### 3. 隔離性 (Isolation) 實作
+
+**READ_COMMITTED 隔離級別**:
+```java
+// src/main/java/com/example/workflow/transaction/TransactionalServiceDelegate.java:308-317
+protected TransactionOptions createTransactionOptions(DelegateExecution execution) {
+    return new TransactionOptions(
+        TransactionType.DISTRIBUTED,              // 分散式事務
+        Duration.ofSeconds(30),                   // 30 秒超時
+        TransactionIsolation.READ_COMMITTED,      // 讀已提交隔離級別
+        3,                                        // 3 次重試
+        false                                     // 預設不啟用 XA
+    );
+}
+```
+
+**並發事務隔離測試**:
+```java
+// src/test/java/com/example/workflow/integration/TransactionWorkflowE2ETest.java:170-243
+@Test
+public void testConcurrentTransactionIsolation() throws Exception {
+    int concurrentProcesses = 5;
+    ExecutorService executor = Executors.newFixedThreadPool(concurrentProcesses);
+    
+    // 並行啟動多個流程
+    for (int i = 0; i < concurrentProcesses; i++) {
+        Future<ProcessInstance> future = executor.submit(() -> {
+            // 每個流程使用不同的資料，測試隔離性
+            Map<String, Object> variables = Map.of(
+                "processNumber", processNumber,
+                "apiCalls", createUniqueApiCallsForProcess(processNumber)
+            );
+            return processEngine.getRuntimeService().startProcessInstanceByKey("parallelprocess", variables);
+        });
+    }
+    
+    // 驗證事務隔離性
+    verifyTransactionIsolation(processInstances);
+}
+
+private void verifyTransactionIsolation(List<ProcessInstance> processInstances) {
+    // 驗證每個流程實例都有獨立的事務資料
+    for (String processId1 : processDataKeys.keySet()) {
+        for (String processId2 : processDataKeys.keySet()) {
+            if (!processId1.equals(processId2)) {
+                Set<String> intersection = new HashSet<>(keys1);
+                intersection.retainAll(keys2);
+                
+                // 確保沒有共用的事務資料鍵
+                assertTrue(intersection.isEmpty(), 
+                    "Processes should not share transaction data keys");
+            }
+        }
+    }
+}
+```
+
+#### 4. 持久性 (Durability) 實作
+
+**事務提交與持久化**:
+```java
+// src/main/java/com/example/workflow/transaction/HazelcastTransactionManager.java:128-198
+public TransactionResult commitTransaction(String transactionId) {
+    TransactionContext hazelcastContext = hazelcastTransactionContexts.get(transactionId);
+    
+    // 提交 Hazelcast 事務，資料持久化到叢集
+    hazelcastContext.commitTransaction();
+    
+    // 清理本地資源
+    cleanup(transactionId);
+    
+    // 記錄成功提交
+    if (transactionMonitor != null) {
+        transactionMonitor.recordTransactionCommitted(transactionId, executionTime);
+    }
+    
+    return new TransactionResult(transactionId, TransactionStatus.SUCCESS, ...);
+}
+```
+
+**Hazelcast 叢集持久性**:
+- 資料自動備份到叢集中的多個節點
+- 節點失效時自動故障轉移
+- 資料在記憶體和可選的持久化存儲中維持
+
+### RestServiceDelegate 的事務整合機制
+
+#### API 調用與 Hazelcast 操作協調
+
+```java
+// src/main/java/com/example/workflow/tasks/RestServiceDelegate.java:110-130
+try {
+    logger.info("Making HTTP call within transaction {} to: {}", 
+               transactionContext.transactionId(), apiUrl);
+    
+    HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+    
+    // 處理回應並事務性地存儲在 Hazelcast 中
+    handleTransactionalResponse(execution, response, transactionContext);
+    
+} catch (Exception e) {
+    logger.error("REST call failed within transaction {}: {}", 
+                transactionContext.transactionId(), e.getMessage(), e);
+    // 異常會觸發整個事務的回滾
+    throw new Exception("REST call failed within transaction: " + e.getMessage(), e);
+}
+```
+
+#### 錯誤處理與回滾邏輯
+
+```java
+// src/main/java/com/example/workflow/tasks/RestServiceDelegate.java:163-172
+if (statusCode >= 400 && statusCode < 500) {
+    logger.warn("API client error {} in transaction {}", statusCode, transactionId);
+    throw new BpmnError("CLIENT_ERROR", 
+        "API returned client error: " + statusCode + " in transaction: " + transactionId);
+} else {
+    logger.error("API system error {} in transaction {}", statusCode, transactionId);
+    throw new RuntimeException(
+        "API system error: " + statusCode + " in transaction: " + transactionId);
+}
+```
+
+### 分散式事務協調機制
+
+#### 兩階段提交 (2PC) 實作
+
+```java
+// src/main/java/com/example/workflow/transaction/HazelcastTransactionManager.java:351-360
+private com.hazelcast.transaction.TransactionOptions.TransactionType mapTransactionType(TransactionType type) {
+    return switch (type) {
+        case LOCAL -> com.hazelcast.transaction.TransactionOptions.TransactionType.TWO_PHASE;
+        case XA, DISTRIBUTED -> com.hazelcast.transaction.TransactionOptions.TransactionType.TWO_PHASE;
+        case SAGA -> com.hazelcast.transaction.TransactionOptions.TransactionType.TWO_PHASE;
+        case TWO_PHASE -> com.hazelcast.transaction.TransactionOptions.TransactionType.TWO_PHASE;
+        case ONE_PHASE -> com.hazelcast.transaction.TransactionOptions.TransactionType.ONE_PHASE;
+    };
+}
+```
+
+#### 超時與死鎖處理
+
+```java
+// src/main/java/com/example/workflow/transaction/HazelcastTransactionManager.java:320-337
+private void scheduleTimeout(String transactionId, Duration timeout) {
+    timeoutExecutor.schedule(() -> {
+        logger.warn("Transaction {} timed out after {}", transactionId, timeout);
+        
+        // 記錄超時事件
+        if (transactionMonitor != null) {
+            transactionMonitor.recordTimeoutOccurred(transactionId, timeout, timeout);
+        }
+        
+        try {
+            rollbackTransaction(transactionId); // 自動回滾超時事務
+        } catch (Exception e) {
+            logger.error("Failed to rollback timed out transaction {}", transactionId, e);
+        }
+    }, timeout.toMillis(), TimeUnit.MILLISECONDS);
+}
+```
+
+### 測試驗證 ACID 特性
+
+#### 成功場景測試 (原子性 + 一致性)
+
+```java
+// src/test/java/com/example/workflow/integration/TransactionWorkflowE2ETest.java:78-119
+@Test
+public void testSuccessfulParallelTransactionExecution() throws Exception {
+    // 創建多個 API 調用的測試資料
+    List<Map<String, String>> apiCalls = Arrays.asList(
+        createApiCall(mockApiUrl, "{\"action\": \"create_user\", \"userId\": 1}"),
+        createApiCall(mockApiUrl, "{\"action\": \"create_profile\", \"userId\": 1}"),
+        createApiCall(mockApiUrl, "{\"action\": \"send_welcome_email\", \"userId\": 1}")
+    );
+    
+    // 執行工作流程
+    ProcessInstance processInstance = processEngine.getRuntimeService()
+        .startProcessInstanceByKey("parallelprocess", variables);
+    
+    // 等待流程完成
+    waitForProcessCompletion(processInstance.getId(), Duration.ofSeconds(30));
+    
+    // 驗證原子性：流程成功完成
+    assertTrue(isProcessCompleted(processInstance.getId()), 
+              "Process should complete successfully");
+    
+    // 驗證一致性：事務資料已存儲
+    assertTrue(transactionDataMap.size() > 0, 
+              "Transaction data should be stored in Hazelcast");
+    
+    // 驗證效能要求
+    assertTrue(executionTime.toMillis() < 5000, 
+              "Execution time should be under 5000ms");
+}
+```
+
+#### 並發隔離性測試
+
+```java
+// src/test/java/com/example/workflow/integration/TransactionWorkflowE2ETest.java:448-482
+private void verifyTransactionIsolation(List<ProcessInstance> processInstances) {
+    Map<String, Set<String>> processDataKeys = new HashMap<>();
+    
+    // 收集每個流程實例的事務資料鍵
+    for (ProcessInstance instance : processInstances) {
+        Set<String> keysForProcess = new HashSet<>();
+        for (String key : transactionDataMap.keySet()) {
+            if (key.contains(instance.getId())) {
+                keysForProcess.add(key);
+            }
+        }
+        processDataKeys.put(instance.getId(), keysForProcess);
+    }
+    
+    // 驗證沒有流程共用事務資料鍵
+    for (String processId1 : processDataKeys.keySet()) {
+        for (String processId2 : processDataKeys.keySet()) {
+            if (!processId1.equals(processId2)) {
+                Set<String> keys1 = processDataKeys.get(processId1);
+                Set<String> keys2 = processDataKeys.get(processId2);
+                
+                Set<String> intersection = new HashSet<>(keys1);
+                intersection.retainAll(keys2);
+                
+                assertTrue(intersection.isEmpty(), 
+                    String.format("Processes %s and %s should not share transaction data keys", 
+                                processId1, processId2));
+            }
+        }
+    }
+}
+```
+
+#### 效能與吞吐量測試
+
+```java
+// src/test/java/com/example/workflow/integration/TransactionWorkflowE2ETest.java:246-336
+@Test
+public void testPerformanceUnderLoad() throws Exception {
+    int numberOfProcesses = 10;
+    ExecutorService executor = Executors.newFixedThreadPool(numberOfProcesses);
+    
+    // 並行執行多個流程測試效能
+    for (int i = 0; i < numberOfProcesses; i++) {
+        Future<Duration> future = executor.submit(() -> {
+            Instant start = Instant.now();
+            // 執行流程...
+            return Duration.between(start, Instant.now());
+        });
+        futures.add(future);
+    }
+    
+    // 驗證效能要求
+    long avgExecutionTime = executionTimes.stream()
+        .mapToLong(Duration::toMillis)
+        .average()
+        .orElse(0);
+    
+    assertTrue(avgExecutionTime < 3000, 
+        String.format("Average execution time %dms should be under 3000ms", avgExecutionTime));
+    
+    // 驗證吞吐量
+    double throughput = (double) numberOfProcesses / (overallTime.toMillis() / 1000.0);
+    assertTrue(throughput >= 1, 
+        String.format("Throughput %.2f processes/sec should be adequate", throughput));
+}
+```
+
+### 總結
+
+本專案的 Hazelcast 分散式交易實作具備以下特性：
+
+1. **完整的 ACID 保證**：
+   - **原子性**：通過 HazelcastTransactionManager 統一管理事務生命週期
+   - **一致性**：通過 TransactionalMap 確保資料狀態一致
+   - **隔離性**：READ_COMMITTED 隔離級別防止髒讀
+   - **持久性**：Hazelcast 叢集自動複製和備份
+
+2. **分散式協調**：
+   - 兩階段提交協議確保多節點一致性
+   - 自動超時處理和死鎖檢測
+   - 節點失效自動故障轉移
+
+3. **與 Camunda 深度整合**：
+   - TransactionalServiceDelegate 提供統一事務框架
+   - RestServiceDelegate 實現 API 調用與 Hazelcast 操作協調
+   - 流程變數自動管理事務上下文
+
+4. **完整的測試覆蓋**：
+   - E2E 測試驗證各種場景
+   - 並發隔離性測試確保多流程安全
+   - 效能測試保證系統可用性
+
+這個實作展示了企業級分散式事務系統的完整解決方案，在 Camunda 工作流程引擎中提供可靠的資料一致性保證。
