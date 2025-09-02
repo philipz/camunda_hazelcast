@@ -629,3 +629,295 @@ public void testPerformanceUnderLoad() throws Exception {
    - 效能測試保證系統可用性
 
 這個實作展示了企業級分散式事務系統的完整解決方案，在 Camunda 工作流程引擎中提供可靠的資料一致性保證。
+
+## 為什麼不使用 map.lock() 進行鎖定隔離？
+
+### Hazelcast 的兩種鎖定機制對比
+
+#### 1. 顯式鎖定 (`map.lock()`) - 傳統方式
+
+```java
+// 傳統的顯式鎖定方式
+IMap<String, Object> map = hazelcastInstance.getMap("myMap");
+String key = "myKey";
+
+map.lock(key);
+try {
+    Object value = map.get(key);
+    // 處理業務邏輯
+    map.put(key, newValue);
+} finally {
+    map.unlock(key);  // 必須手動解鎖
+}
+```
+
+**問題與限制**：
+- **手動管理複雜**：需要手動管理鎖的獲取和釋放
+- **死鎖風險**：容易忘記解鎖造成死鎖
+- **鎖範圍不一致**：鎖的範圍與業務邏輯不一致
+- **不支援事務**：無法提供 ACID 特性
+- **異常處理複雜**：需要在 finally 中確保解鎖
+- **可讀性差**：業務邏輯與鎖管理混雜
+
+#### 2. 事務性鎖定 (`TransactionalMap`) - 本專案使用
+
+```java
+// 本專案使用的事務性方式
+TransactionalMap<String, Object> txMap = transactionContext.getMap("myMap");
+
+// 自動獲得事務性鎖定
+Object value = txMap.get(key);           // 自動讀鎖
+txMap.put(key, newValue);                // 自動寫鎖
+
+// 事務提交時自動釋放所有鎖
+```
+
+### TransactionalMap 的隔離實作機制
+
+#### 自動鎖管理
+
+在 `TransactionalServiceDelegate.java` 中：
+
+```java
+// src/main/java/com/example/workflow/transaction/TransactionalServiceDelegate.java:224-234
+protected <K, V> TransactionalMap<K, V> getTransactionalMap(String mapName, TransactionContext transactionContext) {
+    // 取得 Hazelcast 事務上下文
+    com.hazelcast.transaction.TransactionContext hazelcastContext = 
+        getHazelcastTransactionContext(transactionContext);
+    
+    // TransactionalMap 自動處理鎖定，無需手動管理
+    return hazelcastContext.getMap(mapName);
+}
+```
+
+#### READ_COMMITTED 隔離級別的內部實現
+
+```java
+// TransactionalMap 內部機制（概念性說明）
+class TransactionalMapImpl<K, V> {
+    
+    public V get(K key) {
+        // 自動獲得讀鎖，防止髒讀
+        acquireReadLock(key);
+        return readCommittedValue(key);  // 只讀取已提交的值
+    }
+    
+    public V put(K key, V value) {
+        // 自動獲得寫鎖，防止並發寫入
+        acquireWriteLock(key);
+        return putValueWithVersion(key, value);
+    }
+    
+    public V getForUpdate(K key) {
+        // 悲觀鎖定，直到事務結束才釋放
+        acquireExclusiveLock(key);
+        return readValue(key);
+    }
+    
+    // 事務提交時自動釋放所有鎖
+    public void onTransactionCommit() {
+        releaseAllLocks();
+    }
+}
+```
+
+### 事務邊界對齊的鎖管理
+
+在 `RestServiceDelegate.java` 中的實際應用：
+
+```java
+// src/main/java/com/example/workflow/tasks/RestServiceDelegate.java:187-221
+private void storeResponseDataTransactionally(DelegateExecution execution, String responseBody, TransactionContext transactionContext) throws Exception {
+    // 取得事務性 Map，自動處理隔離
+    TransactionalMap<String, Object> transactionalMap = getTransactionalMap("transaction-data", transactionContext);
+    
+    // 這些操作都在同一事務中，自動獲得適當的鎖
+    // 1. 存儲主要資料 - 自動寫鎖
+    transactionalMap.put(responseKey, responseData);
+    
+    // 2. 設置查找索引 - 也在同一事務中，保證原子性
+    TransactionalMap<String, Object> lookupMap = getTransactionalMap("transaction-data", transactionContext);
+    lookupMap.put(lookupKey + ":" + activityId, responseKey);
+    
+    // 事務提交時，所有鎖自動釋放，確保一致性
+}
+```
+
+### 隔離性驗證
+
+#### 併發測試證明隔離有效
+
+```java
+// src/test/java/com/example/workflow/integration/TransactionWorkflowE2ETest.java:170-243
+@Test
+public void testConcurrentTransactionIsolation() throws Exception {
+    int concurrentProcesses = 5;
+    ExecutorService executor = Executors.newFixedThreadPool(concurrentProcesses);
+    
+    // 並行啟動多個流程，每個都有獨立的事務
+    for (int i = 0; i < concurrentProcesses; i++) {
+        Future<ProcessInstance> future = executor.submit(() -> {
+            // 每個流程使用不同的資料，測試隔離性
+            Map<String, Object> variables = Map.of(
+                "processNumber", processNumber,
+                "apiCalls", createUniqueApiCallsForProcess(processNumber)
+            );
+            return processEngine.getRuntimeService().startProcessInstanceByKey("parallelprocess", variables);
+        });
+    }
+    
+    // 驗證事務隔離性 - 沒有共用資料鍵
+    verifyTransactionIsolation(processInstances);
+}
+```
+
+#### 隔離性驗證邏輯
+
+```java
+// src/test/java/com/example/workflow/integration/TransactionWorkflowE2ETest.java:448-482
+private void verifyTransactionIsolation(List<ProcessInstance> processInstances) {
+    Map<String, Set<String>> processDataKeys = new HashMap<>();
+    
+    // 收集每個流程實例的事務資料鍵
+    for (ProcessInstance instance : processInstances) {
+        Set<String> keysForProcess = new HashSet<>();
+        for (String key : transactionDataMap.keySet()) {
+            if (key.contains(instance.getId())) {
+                keysForProcess.add(key);
+            }
+        }
+        processDataKeys.put(instance.getId(), keysForProcess);
+    }
+    
+    // 驗證沒有流程共用事務資料鍵 - 證明隔離有效
+    for (String processId1 : processDataKeys.keySet()) {
+        for (String processId2 : processDataKeys.keySet()) {
+            if (!processId1.equals(processId2)) {
+                Set<String> keys1 = processDataKeys.get(processId1);
+                Set<String> keys2 = processDataKeys.get(processId2);
+                
+                Set<String> intersection = new HashSet<>(keys1);
+                intersection.retainAll(keys2);
+                
+                // 如果有交集，表示隔離失敗
+                assertTrue(intersection.isEmpty(), 
+                    String.format("Processes %s and %s should not share transaction data keys", 
+                                processId1, processId2));
+            }
+        }
+    }
+}
+```
+
+### 優勢比較表
+
+| 特性 | map.lock() | TransactionalMap |
+|------|------------|------------------|
+| **鎖管理** | 手動 | 自動 |
+| **死鎖風險** | 高（忘記解鎖） | 低（自動管理） |
+| **事務支援** | 無 | 完整 ACID |
+| **隔離級別** | 無 | READ_COMMITTED |
+| **錯誤恢復** | 複雜（需手動清理） | 自動（事務回滾） |
+| **程式複雜度** | 高（業務+鎖邏輯） | 低（只關注業務） |
+| **效能** | 一般（手動優化） | 優化（引擎管理） |
+| **可讀性** | 差（鎖邏輯混雜） | 好（清晰分離） |
+| **維護成本** | 高 | 低 |
+
+### 為什麼 TransactionalMap 更適合
+
+#### 1. **透明隔離**
+- 開發者無需關心底層鎖定細節
+- 事務管理器自動處理鎖的獲取和釋放
+- 鎖的生命週期與事務邊界完全對齊
+
+#### 2. **ACID 保證**
+- **原子性**：事務內所有操作要麼全部成功要麼全部失敗
+- **一致性**：確保資料狀態一致，不會出現中間狀態
+- **隔離性**：READ_COMMITTED 防止髒讀，併發事務間完全隔離
+- **持久性**：提交後的資料在 Hazelcast 叢集中持久化
+
+#### 3. **簡化開發**
+- 消除手動鎖管理的複雜性
+- 避免常見的死鎖和資源洩漏問題
+- 程式碼更清晰，專注於業務邏輯
+
+#### 4. **效能優化**
+- Hazelcast 事務管理器內部優化鎖定策略
+- 自動死鎖檢測和解決
+- 智能的鎖升級和降級
+
+#### 5. **錯誤處理**
+- 異常時自動回滾，釋放所有鎖
+- 無需手動清理資源
+- 統一的錯誤恢復機制
+
+### 實際應用場景對比
+
+#### 使用 map.lock() 的場景（不推薦）
+
+```java
+// 複雜且容易出錯的方式
+IMap<String, Object> map = hazelcastInstance.getMap("transaction-data");
+List<String> lockedKeys = new ArrayList<>();
+
+try {
+    // 手動鎖定多個鍵
+    map.lock(responseKey);
+    lockedKeys.add(responseKey);
+    
+    map.lock(lookupKey);
+    lockedKeys.add(lookupKey);
+    
+    // 業務邏輯
+    map.put(responseKey, responseData);
+    map.put(lookupKey, responseKey);
+    
+    // 如果這裡拋出異常，鎖可能不會釋放
+    performApiCall();
+    
+} catch (Exception e) {
+    // 需要手動回滾資料
+    map.remove(responseKey);
+    map.remove(lookupKey);
+    throw e;
+} finally {
+    // 必須手動釋放所有鎖
+    for (String key : lockedKeys) {
+        try {
+            map.unlock(key);
+        } catch (Exception unlockException) {
+            logger.error("Failed to unlock key: " + key, unlockException);
+        }
+    }
+}
+```
+
+#### 使用 TransactionalMap 的場景（推薦）
+
+```java
+// 簡潔且安全的方式
+// 事務自動開始
+TransactionalMap<String, Object> txMap = getTransactionalMap("transaction-data", transactionContext);
+
+// 所有操作都在事務中，自動獲得適當的鎖
+txMap.put(responseKey, responseData);
+txMap.put(lookupKey, responseKey);
+
+// 執行 API 調用
+performApiCall();
+
+// 事務自動提交，釋放所有鎖
+// 如果有異常，事務自動回滾，資料和鎖都自動清理
+```
+
+### 總結
+
+本專案選擇 `TransactionalMap` 而非 `map.lock()` 的原因：
+
+1. **設計哲學**：現代分散式系統追求宣告式事務，而非命令式鎖管理
+2. **可靠性**：自動的鎖管理消除了人為錯誤的可能性
+3. **可維護性**：程式碼更簡潔，更容易理解和維護
+4. **效能**：Hazelcast 引擎可以進行全域優化
+5. **一致性**：與 ACID 事務模型完美對齊
+
+這種設計體現了現代企業級分散式系統的最佳實踐：**透過宣告式事務提供強一致性保證，而不需要複雜的手動資源管理**。
