@@ -1,0 +1,65 @@
+# Camunda Hazelcast integration catalog（agent-onboard 建議草稿，Issue #5；待人類裁定）。
+#
+# 本檔由 factory agent 掃描 philipz/camunda_hazelcast 實際結構後產出，僅為「提案」。
+# 三軸（business-criticality / risk-profile / complexity）的值一律以 TODO 佔位——
+# 人類依下列建議值＋理由＋證據裁定後，親自搬檔至 repo 根目錄才生效（docs/05 §1.1）。
+#
+# 三軸定義（docs/06 §3）：每軸 0–2，總分 6 為最高風險直接 in-loop。
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: camunda_hazelcast
+  description: Camunda BPM 7.23 整合 Hazelcast 5.5 的示範專案（Spring Boot 3.4.4 / Java 21 / Maven）——以 Hazelcast 分散快取存放工作流程變數與 Spring Session 分散會話。
+  annotations:
+    github.com/project-slug: philipz/camunda_hazelcast
+
+    # --- Factory oversight axes (docs/06 §3)；值待人類裁定，一律 TODO ---
+    factory.io/business-criticality: TODO  # strategic | tactical | supporting
+    # 建議：supporting（0）。理由與證據見下方註解塊。
+
+    factory.io/risk-profile: TODO          # high | medium | low
+    # 建議：medium（1）。理由與證據見下方註解塊。
+
+    factory.io/complexity: TODO            # high | medium | low
+    # 建議：low（0）。理由與證據見下方註解塊。
+
+    # 新納管 repo 不預設開放自動合併；人類審查後如需放寬再改（docs/11 §1.2）。
+    factory.io/agent-automerge: "false"
+
+    # --- 技術棧規範（依實際掃描填寫，非風險裁定）---
+    factory.io/stack: java-springboot
+    factory.io/test-framework: junit
+
+    # --- 三軸建議理由（供人類裁定的完整證據）---
+    # ［business-criticality：建議 supporting＝0，不建議 strategic／tactical］
+    #   證據：README.md 與 CLAUDE.md 明言此為「demonstrates the integration」「demo project」，
+    #   pom.xml artifactId = "my-project"、groupId = "com.example.workflow"、version 1.0.0-SNAPSHOT，
+    #   皆典型示範/教學定位。使用者為內部（Camunda 工作流示範），非對外客戶系統。
+    #   為什麼不是 strategic：無金流、無正式使用者承載、README 自述為 integration demo，
+    #   停機不影響任何客戶 SLA。
+    #   為什麼不是 tactical（即「內部工具、故障時工廠照常運作」）：它也不是工廠基礎設施——
+    #   完全不影響 factory 的運作。故落在 supporting。
+    #
+    # ［risk-profile：建議 medium＝1，不建議 low／high］
+    #   證據：src/main/resources/application.yaml 與 application-dev.yaml 內含硬編碼憑證
+    #   （postgres password: "password"、camunda.bpm.admin-user id/password = demo/demo）；
+    #   docker-compose.yml 亦硬編碼 POSTGRES_PASSWORD=password 且 POSTGRES_HOST_AUTH_METHOD=trust。
+    #   這是敏感資料（credentials-in-config）外洩面，符合 H3 敏感資料處理的風險型態。
+    #   為什麼不是 low：設定檔直接內嵌資料庫與管理員帳密，若此 repo 被公開或誤發佈，
+    #   憑證即外洩——與 factory-scoreboard 實測「匿名可讀即資料外洩」同型風險，不宜評 low。
+    #   為什麼不是 high：無真正的認證授權邏輯程式碼（pom.xml 無 spring-boot-starter-security、
+    #   全 repo 無 @PreAuthorize / UserDetailsService / authentication provider）、
+    #   無金流、無 PII、無加密；資料可重建，非不可回復，故不到 high。
+    #
+    # ［complexity：建議 low＝0，不建議 medium／high］
+    #   證據：src/main/java/com/example/workflow/ 僅 7 個原始檔（Application、config×4、
+    #   tasks×2），單一 Maven 模組（pom.xml 無 <modules>）、無 migrations/、無 openapi/proto、
+    #   單一資料表由 Camunda 自動管理。docker-compose.yml 的 postgresql/camunda/webproxy
+    #   只是部署拓樸（webproxy 為 nginx 反代，webproxy/Dockerfile + proxy.conf），
+    #   runtime 仍是單一服務，跨服務協調僅「Camunda → Hazelcast/Postgres」本機相依。
+    #   為什麼不是 medium 以上：無多服務互動協定、無事件/訊息佇列、無分散式耦合邏輯，
+    #   delegate 只做 put/get 兩個 map 操作。
+spec:
+  type: service
+  lifecycle: experimental
+  owner: group:default/factory-team
