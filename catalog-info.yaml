@@ -14,13 +14,13 @@ metadata:
     github.com/project-slug: philipz/camunda_hazelcast
 
     # --- Factory oversight axes (docs/06 §3)；值待人類裁定，一律 TODO ---
-    factory.io/business-criticality: TODO  # strategic | tactical | supporting
+    factory.io/business-criticality: supporting  # strategic | tactical | supporting
     # 建議：supporting（0）。理由與證據見下方註解塊。
 
-    factory.io/risk-profile: TODO          # high | medium | low
+    factory.io/risk-profile: medium         # high | medium | low
     # 建議：medium（1）。理由與證據見下方註解塊。
 
-    factory.io/complexity: TODO            # high | medium | low
+    factory.io/complexity: low            # high | medium | low
     # 建議：low（0）。理由與證據見下方註解塊。
 
     # 新納管 repo 不預設開放自動合併；人類審查後如需放寬再改（docs/11 §1.2）。
