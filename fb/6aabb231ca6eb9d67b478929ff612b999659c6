@@ -1,0 +1,14 @@
+.github/workflows/security.yml
+  h_1b119f25eaf333 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "fb6aabb231ca6eb9d67b478929ff612b999659c6",
+  "prompts": {},
+  "humans": {
+    "h_1b119f25eaf333": {
+      "author": "philipz <philipzheng@gmail.com>"
+    }
+  }
+}
