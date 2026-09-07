@@ -1,0 +1,63 @@
+# camunda_hazelcast risk hard rules（agent-onboard 建議草稿，Issue #5；待人類裁定）。
+#
+# 觸及下列任一 pattern → risk = 2，無裁量空間（docs/06 §3.2, §5.2）。
+# H1–H4 源自 Gartner G00843405；H5–H7 為本專案擴充（guardrail 自我保護與
+# 不可逆操作）。此檔合併後將位於 .github/ 下，受 CODEOWNERS 保護——
+# agent 不得修改約束自己的規則（docs/05 §1.1）。
+#
+# 盤點依據（Issue #5 唯讀掃描 philipz/camunda_hazelcast 實際結構）：
+#   - Java 21 + Maven 單一模組（pom.xml 無 <modules>）
+#   - src/main/java/com/example/workflow/ 僅 7 檔：Application.java、
+#     config/{HazelcastAutoConfiguration,HazelcastHealthIndicator,
+#            HazelcastProperties,SessionConfig}.java、
+#     tasks/{getServiceDelegate,putServiceDelegate}.java
+#   - src/main/resources/：application.yaml、application-dev.yaml、
+#     process.bpmn、getprocess.bpmn（無 migrations/、無 openapi/、無 *.proto）
+#   - src/test/：5 測試檔 + application-test.yaml
+#   - webproxy/：nginx 反代（Dockerfile + proxy.conf）
+#   - docker-compose.yml：postgresql / camunda / webproxy 三容器
+#
+# 重要：H1–H4、H6–H7 只在「實際存在對應路徑」時寫入；無對應結構的規則保留
+# id 但留空，並以「掃描未發現，待人類確認」註明（docs/16 §5.3：硬規則若誤報
+# 會訓練審查者略過警訊，反而削弱防護；本 repo 無設計 tokens 等易誤中的命名）。
+hard_rules:
+  # H1 — 授權/認證邏輯：本 repo 無 Spring Security、無 auth/ 目錄、無
+  # @PreAuthorize/UserDetailsService/authentication provider（pom.xml 無
+  # spring-boot-starter-security；grep 全 repo 無 auth/security 邏輯類別）。
+  # 掃描未發現，待人類確認。
+  H1: []
+
+  # H2 — 財務計算：無 payment/billing/invoice/結算任何程式碼（grep 無命中）。
+  # 掃描未發現，待人類確認。
+  H2: []
+
+  # H3 — 敏感資料處理：命中點為「設定檔內嵌憑證」——
+  #   src/main/resources/application.yaml（postgres password: "password"、
+  #   camunda.bpm.admin-user demo/demo）
+  #   src/main/resources/application-dev.yaml（同上）
+  #   此三檔同時含 DB 連線與管理員帳密，為本 repo 唯一的敏感資料外洩面。
+  H3:
+    - "src/main/resources/application*.yaml"     # application.yaml / application-dev.yaml（內嵌 DB + admin 憑證）
+
+  # H4 — systems of record 與共用模組：單一模組、無 shared/core/common 目錄，
+  # 無跨服務共用的 shared 程式庫（src/main/java 下無對應結構）。
+  # 掃描未發現，待人類確認。
+  H4: []
+
+  # H5 — guardrail 自身（無條件寫入，與 repo 結構無關；agent 不得修改）
+  H5:
+    - ".github/**"                                # .github/workflows/{claude-code-review,claude,security}.yml
+    - "CODEOWNERS"                                # 尚不存在，合併後若引入需受保護
+    - "catalog-info.yaml"                         # 尚不存在，本提案搬檔後即受保護
+    - ".dsh/skills/**"                            # 尚不存在，保留以防引入
+
+  # H6 — 不可逆 schema 遷移：無 migrations/、無 db/migration/、無 *.sql、
+  # 無 Liquibase/Flyway（pom.xml 無相關相依；Camunda 啟動時自動建 schema）。
+  # 掃描未發現，待人類確認。
+  H6: []
+
+  # H7 — 對外 API 破壞性變更：本 repo 的 Camunda REST/webapp 由
+  # camunda-bpm-spring-boot-starter-rest/webapp 提供（pom.xml），自身無
+  # api/ 目錄、無 openapi.yaml、無 *.proto、無自訂 DTO/事件 schema。
+  # 掃描未發現，待人類確認。
+  H7: []
