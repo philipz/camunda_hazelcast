@@ -1,0 +1,14 @@
+.github/dependabot.yml
+  h_1b119f25eaf333 1-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "60dab9de8b11b7fe200b046cb8157317317c7edf",
+  "prompts": {},
+  "humans": {
+    "h_1b119f25eaf333": {
+      "author": "philipz <philipzheng@gmail.com>"
+    }
+  }
+}
