@@ -108,7 +108,7 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
-        <version>3.4.4</version>
+        <version>4.1.1</version>
         <configuration>
           <image>
             <env>
