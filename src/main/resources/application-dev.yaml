@@ -5,7 +5,7 @@ spring:
     password: password
     driver-class-name: org.postgresql.Driver
 
-camunda.bpm.admin-user:
+operaton.bpm.admin-user:
   id: demo
   password: demo
 
