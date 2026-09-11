@@ -17,10 +17,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'   # 與 pom.xml maven.compiler.source/target=21 一致（§2.1）
@@ -32,7 +32,7 @@ jobs:
 
       - name: Upload jar artifact (on trunk only)
         if: github.event_name == 'push'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: my-project-jar
           path: target/*.jar
