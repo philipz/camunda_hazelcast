@@ -21,7 +21,7 @@ spring:
         http-only: true
         same-site: lax
 
-camunda.bpm.admin-user:
+operaton.bpm.admin-user:
   id: demo
   password: demo
 
