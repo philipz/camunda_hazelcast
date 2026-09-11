@@ -2,7 +2,7 @@ package com.example.workflow.integration;
 
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.map.IMap;
-import org.camunda.bpm.engine.ProcessEngine;
+import org.operaton.bpm.engine.ProcessEngine;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
